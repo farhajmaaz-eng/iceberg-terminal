@@ -1,0 +1,125 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: dark;
+    --panel-bg: 10 12 15;
+    --edge: 35 42 51;
+  }
+
+  * {
+    @apply border-edge;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    @apply bg-surface-0 text-slate-200 font-sans antialiased;
+    font-feature-settings: 'tnum' 1, 'cv05' 1;
+    overscroll-behavior-y: none;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Dense terminal scrollbars */
+  ::-webkit-scrollbar {
+    width: 9px;
+    height: 9px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply rounded-sm border-2 border-solid border-transparent bg-edge-strong bg-clip-padding;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-dim;
+  }
+  ::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+
+  :focus-visible {
+    @apply outline-none ring-1 ring-cyan/70 ring-offset-0;
+  }
+
+  input,
+  button,
+  select,
+  textarea {
+    font: inherit;
+  }
+
+  /* Numeric columns stay aligned in dense tables. */
+  .tnum {
+    font-variant-numeric: tabular-nums;
+    font-family: theme('fontFamily.mono');
+  }
+}
+
+@layer components {
+  .panel {
+    @apply border border-edge bg-surface-1;
+  }
+
+  .panel-header {
+    @apply flex h-8 shrink-0 items-center justify-between gap-2 border-b border-edge bg-surface-2/60 px-2.5;
+  }
+
+  .panel-title {
+    @apply flex items-center gap-1.5 text-2xs font-semibold uppercase tracking-[0.14em] text-slate-400;
+  }
+
+  .data-table {
+    @apply w-full border-collapse text-xs;
+  }
+
+  .data-table thead th {
+    @apply sticky top-0 z-10 whitespace-nowrap border-b border-edge bg-surface-2 px-2 py-1.5 text-left text-2xs font-semibold uppercase tracking-wider text-slate-500;
+  }
+
+  .data-table tbody td {
+    @apply whitespace-nowrap border-b border-edge/60 px-2 py-1.5 align-middle;
+  }
+
+  .data-table tbody tr {
+    @apply transition-colors;
+  }
+
+  .data-table tbody tr:hover {
+    @apply bg-surface-3/70;
+  }
+
+  .data-table tbody tr[data-selected='true'] {
+    @apply bg-cyan/10;
+  }
+
+  .link {
+    @apply text-cyan underline-offset-2 hover:underline;
+  }
+
+  .kbd {
+    @apply inline-flex h-4 min-w-[1rem] items-center justify-center rounded border border-edge-strong bg-surface-3 px-1 font-mono text-[10px] font-medium text-slate-400;
+  }
+
+  .scroll-thin {
+    scrollbar-width: thin;
+    scrollbar-color: theme('colors.edge.strong') transparent;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  .grid-cols-terminal {
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  }
+}

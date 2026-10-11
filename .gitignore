@@ -1,0 +1,61 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build output
+dist/
+dist-ssr/
+build/
+*.local
+
+# Test output
+coverage/
+playwright-report/
+test-results/
+blob-report/
+.playwright/
+/e2e/.auth/
+
+# Environment — NEVER commit real secrets
+.env
+.env.*
+!.env.example
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Editors / OS
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Local exported workspace bundles (may contain personal notes)
+*.iceberg.json
+iceberg-workspace.local.json
+# Build metadata
+*.tsbuildinfo
+
+# Playwright transpile artifacts
+e2e/**/*.js
+!e2e/**/*.spec.js
+
+# Guard: tsc/esbuild must never emit .js next to .ts sources (Vite would
+# resolve the stale .js instead of the .ts). If one of these reappears, a
+# script is running the compiler with emit enabled.
+vite.config.js
+vitest.setup.js
+playwright.config.js
+tsconfig.tsbuildinfo

@@ -306,15 +306,22 @@ describe('storage failures are not empty data', () => {
 });
 
 describe('workspace import is atomic', () => {
+  // Record values must be JSON strings, because that is what the zustand
+  // IndexedDB adapter writes (see src/lib/storage.ts). A realistic export is
+  // the only honest fixture for an import test.
+  const wl1 = JSON.stringify({ state: { lists: ['a'] }, version: 1 });
+  const wl2 = JSON.stringify({ state: { lists: ['b'] }, version: 1 });
+  const w1 = JSON.stringify({ state: { wallets: [] }, version: 1 });
+
   const validBundle = {
     format: 'iceberg-terminal.workspace',
     version: 1,
     stores: {
       watchlists: [
-        { state: { name: 'iceberg.watchlists.v1', value: { state: { lists: ['a'] }, version: 1 } } },
-        { state: { name: 'iceberg.watchlists.v2', value: { state: { lists: ['b'] }, version: 1 } } },
+        { key: 'iceberg.watchlists.v1', value: wl1 },
+        { key: 'iceberg.watchlists.v2', value: wl2 },
       ],
-      wallets: [{ state: { name: 'iceberg.wallets.v1', value: { state: { wallets: [] }, version: 1 } } }],
+      wallets: [{ key: 'iceberg.wallets.v1', value: w1 }],
     },
   };
 
@@ -338,7 +345,7 @@ describe('workspace import is atomic', () => {
         ...validBundle,
         stores: {
           watchlists: [
-            { state: { name: 'ok', value: { a: 1 } } },
+            { state: { name: 'ok', value: wl1 } },
             { notState: true },
             { state: { value: 1 } },
             { state: { name: 'noValue' } },
@@ -348,8 +355,11 @@ describe('workspace import is atomic', () => {
       }),
     );
     const report = await applyBundle(bundle);
-    expect(report.total).toBe(1);
-    expect(report.skipped).toBe(4);
+    // 'ok' is well-formed but its key does not belong to the watchlists store,
+    // so it is rejected too: 4 rejected by the parser, 1 by per-store validation.
+    expect(report.total).toBe(0);
+    expect(report.skipped).toBe(5);
+    expect(report.rejected.watchlists).toBeTruthy();
   });
 
   it('never writes the secrets store, even if the bundle names it', async () => {
@@ -380,8 +390,8 @@ describe('workspace import is atomic', () => {
       JSON.stringify({
         ...validBundle,
         stores: {
-          watchlists: [{ state: { name: 'good', value: { ok: true } } }],
-          wallets: [{ state: { name: 'bad', value: { alsoFine: true } } }],
+          watchlists: [{ key: 'iceberg.watchlists.v1', value: wl1 }],
+          wallets: [{ key: 'iceberg.wallets.v1', value: w1 }],
         },
       }),
     );
@@ -436,7 +446,7 @@ describe('workspace import is atomic', () => {
 
   it('round-trips a bundle without loss', async () => {
     await wipeLocalData();
-    await idbWriteAtomic([{ store: STORES.wallets, key: 'iceberg.wallets.v1', value: { state: { wallets: ['x'] } } }]);
+    await idbWriteAtomic([{ store: STORES.wallets, key: 'iceberg.wallets.v1', value: w1 }]);
     const first = await buildExport();
     await wipeLocalData();
     await applyBundle(parseBundle(serializeExport(first)));

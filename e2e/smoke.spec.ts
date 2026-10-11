@@ -180,8 +180,33 @@ test.describe('Iceberg Terminal', () => {
     expect(src).toMatch(/^https:\/\//);
     expect(src).toContain('dexscreener.com');
 
-    const loaded = await img.evaluate((el) => el.complete && el.naturalWidth > 0);
-    expect(loaded).toBe(true);
+    // An element being *visible* says nothing about whether its bytes have
+    // arrived — `visible` only implies a non-empty box. Asserting
+    // complete && naturalWidth straight after therefore raced the CDN and
+    // failed intermittently. Wait for the load event itself, then check the
+    // decoded dimensions.
+    const naturalWidth = await img.evaluate((el) => {
+      // Typed structurally rather than as HTMLImageElement: the e2e tsconfig
+      // intentionally does not include the DOM lib, so the global type name
+      // is not in scope here.
+      const img = el as unknown as {
+        complete: boolean;
+        naturalWidth: number;
+        addEventListener(t: string, f: () => void, o?: { once: boolean }): void;
+      };
+      return new Promise<number>((resolve, reject) => {
+        if (img.complete && img.naturalWidth > 0) return resolve(img.naturalWidth);
+        img.addEventListener('load', () => resolve(img.naturalWidth), { once: true });
+        img.addEventListener(
+          'error',
+          () => reject(new Error('provider logo failed to load')),
+          { once: true },
+        );
+        setTimeout(() => reject(new Error('timed out waiting for provider logo')), 20_000);
+      });
+    });
+
+    expect(naturalWidth).toBeGreaterThan(0);
   });
 
   test('no storage warning appears in a healthy browser', async ({ page }) => {

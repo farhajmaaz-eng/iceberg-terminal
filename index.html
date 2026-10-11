@@ -4,6 +4,58 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="color-scheme" content="dark" />
+    <meta name="referrer" content="no-referrer" />
+    <!--
+      Content Security Policy.
+
+      Iceberg Terminal is a static, browser-only app that talks to third-party
+      data providers and renders untrusted token metadata, so a CSP is one of
+      the highest-value defences available here:
+
+        • script-src 'self'      — no inline script, no eval. Injected payloads
+                                    cannot execute even if markup is escaped.
+        • object-src / frame-src — no plugins, no framing of app content.
+        • base-uri / form-action — blocks <base> hijacking and form exfiltration.
+        • connect-src https:/wss: — requests may only leave over TLS. This
+                                    still permits arbitrary HTTPS endpoints
+                                    because the app is BYOK and a user may
+                                    configure any custom Solana RPC. Operators
+                                    who deploy for themselves can narrow this to
+                                    the provider list they intend to allow.
+        • img-src https: data:   — provider logo URLs are attacker-controlled,
+                                    so only http(s) images are fetchable.
+
+      NOTE: frame-ancestors is deliberately absent. It is ignored when a policy
+      is delivered via <meta> (browsers log a warning and skip it), so listing
+      it here would imply clickjacking protection that is not actually active.
+      The real frame-ancestors / X-Frame-Options protection ships in
+      public/_headers, honoured by Netlify, Cloudflare Pages and any other host
+      that supports header files.
+
+      See docs/SECURITY.md for how to tighten connect-src for a deployment.
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="
+        default-src 'self';
+        script-src 'self';
+        style-src 'self' 'unsafe-inline';
+        img-src 'self' https: data: blob:;
+        font-src 'self' data:;
+        connect-src 'self' https: wss:;
+        object-src 'none';
+        frame-src 'none';
+        base-uri 'none';
+        form-action 'none';
+        manifest-src 'self';
+        worker-src 'self' blob:;
+      "
+    />
+    <!-- This app needs no device capabilities at all. -->
+    <meta
+      http-equiv="Permissions-Policy"
+      content="accelerometer=(), autoplay=(), camera=(), display-capture=(), encrypted-media=(), fullscreen=(self), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), midi=(), payment=(), usb=(), xr-spatial-tracking=()"
+    />
     <meta
       name="description"
       content="Iceberg Terminal — open-source, BYOK crypto intelligence workstation for Solana and beyond."

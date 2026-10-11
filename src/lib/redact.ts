@@ -16,7 +16,11 @@ const SECRET_PATTERNS: { re: RegExp; replace: string }[] = [
   },
   // Query-string style credentials
   { re: /([?&](?:api[-_]?key|apikey|x-api-key|x-api-secret|key|token|access[-_]?token)=)[^&\s]+/gi, replace: '$1[REDACTED]' },
-  // Solana private keys (base58, 87-88 chars ending in a curve point) — be conservative
+  // Hex private keys (EVM raw keys / 32-byte secrets), 0x + 128 hex chars
+  { re: /\b0x[0-9a-f]{128}\b/gi, replace: '[REDACTED_KEY_MATERIAL]' },
+  // Solana keypair JSON (array of 64 numbers) — an unmistakable secret shape
+  { re: /\[\s*\d{1,3}(\s*,\s*\d{1,3}){20,}\s*\]/g, replace: '[REDACTED_KEY_MATERIAL]' },
+  // Long base58 key material
   { re: /\b[1-9A-HJ-NP-Za-km-z]{86,90}\b/g, replace: '[REDACTED_KEY_MATERIAL]' },
 ];
 

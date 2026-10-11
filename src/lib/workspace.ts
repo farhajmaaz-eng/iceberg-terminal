@@ -1,5 +1,6 @@
 import { dumpAllStores } from './storage';
 import { STORES, idbWriteAtomic, wipeLocalData, type StoreName, type StoredEntry } from './idb';
+import { validateStoreEntry } from './store-schema';
 
 /**
  * Versioned workspace import/export.
@@ -45,6 +46,8 @@ export interface ImportReport {
   skipped: number;
   /** Stores named in the bundle that are not recognised by this version. */
   unknownStores: string[];
+  /** store -> why specific records were rejected (capped, for the UI). */
+  rejected: Record<string, string[]>;
 }
 
 export async function buildExport(): Promise<WorkspaceBundle> {
@@ -157,15 +160,19 @@ export function parseBundle(text: string): WorkspaceBundle {
 /**
  * Write a validated bundle into IndexedDB atomically.
  *
- * Every entry is collected first and then written inside a single transaction.
- * If any write fails, IndexedDB aborts the transaction and **nothing** is
- * modified — there is no partially-restored state. The returned report
- * describes only what actually landed.
+ * Every record is validated *before* the transaction opens, and all of them are
+ * then written inside a single transaction. If any write fails, IndexedDB
+ * aborts and **nothing** is modified — there is no partially-restored state.
+ * The returned report describes only what actually landed.
+ *
+ * Records that do not match the shape their store expects are rejected here
+ * rather than written and discovered at the next page load.
  */
 export async function applyBundle(bundle: WorkspaceBundle): Promise<ImportReport> {
   const validStores = new Set<string>(Object.values(STORES));
   const writes: { store: StoreName; key: string; value: unknown }[] = [];
   const written: Record<string, number> = {};
+  const rejected: Record<string, string[]> = {};
   const unknownStores: string[] = [];
   let skipped = bundle.rejectedEntries ?? 0;
 
@@ -176,16 +183,26 @@ export async function applyBundle(bundle: WorkspaceBundle): Promise<ImportReport
       skipped += entries.length;
       continue;
     }
+
     let count = 0;
+    const reasons: string[] = [];
     for (const entry of entries) {
       if (typeof entry.key !== 'string' || entry.key === '' || entry.value === undefined) {
         skipped++;
+        reasons.push('entry is missing a key or value');
+        continue;
+      }
+      const verdict = validateStoreEntry(name, entry.key, entry.value);
+      if (!verdict.ok) {
+        skipped++;
+        reasons.push(`${entry.key.slice(0, 40)}: ${verdict.reason}`);
         continue;
       }
       writes.push({ store: name as StoreName, key: entry.key, value: entry.value });
       count++;
     }
     written[name] = count;
+    if (reasons.length) rejected[name] = reasons.slice(0, 5);
   }
 
   // One transaction for everything: all-or-nothing.
@@ -196,6 +213,7 @@ export async function applyBundle(bundle: WorkspaceBundle): Promise<ImportReport
     total: writes.length,
     skipped,
     unknownStores,
+    rejected,
   };
 }
 

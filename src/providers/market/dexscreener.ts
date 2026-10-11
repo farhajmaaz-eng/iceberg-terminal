@@ -222,32 +222,41 @@ function sumReported(values: (number | null)[]): number | null {
  * Total 24h transaction count for a token.
  *
  * Buys and sells are two components of ONE total, so the total is only
- * trustworthy when both are known — for every pool that contributed.
+ * trustworthy when both are known for every pool that contributes.
  *
- * The previous `(buys ?? 0) + (sells ?? 0)` silently substituted zero for a
- * missing component and under-reported the total, which is exactly the
- * "missing value rendered as 0" failure this project exists to avoid. A pool
- * that reports buys but not sells contributes nothing to the total rather than
- * a partial number that looks complete.
+ * Two distinct cases must both yield `null`, and conflating them is the bug
+ * this guards against:
+ *   • buys known,  sells unknown  → partial, total unknowable.
+ *   • buys unknown, sells known   → partial, total unknowable. Skipping the pool
+ *                                  would silently under-report the total.
+ * Only a pool where BOTH are unknown carries no information and is skipped.
+ *
+ * Treating a missing component as zero (the original `(buys ?? 0) + (sells ?? 0)`)
+ * reports a confident number built from an unreported half — exactly the
+ * "missing value rendered as 0" failure this project exists to prevent.
  */
 function totalTxns(markets: Market[]): number | null {
   let total = 0;
   let contributed = false;
+
   for (const m of markets) {
     const t = m.txns?.h24;
     if (!t) continue;
-    const buys = t.buys;
-    const sells = t.sells;
-    if (buys === null || buys === undefined || sells === null || sells === undefined) {
-      // Incomplete component: we cannot state this pool's total.
-      if (buys !== null && buys !== undefined) {
-        return null;
-      }
-      continue;
-    }
+
+    const { buys, sells } = t;
+
+    // Both components unknown carries no information at all -> skip the pool.
+    if ((buys === null || buys === undefined) && (sells === null || sells === undefined)) continue;
+    // Exactly one known -> the total cannot be stated. Returning null for BOTH
+    // orderings is the point: skipping a pool with a known component would
+    // silently under-report the aggregate.
+    if (buys === null || buys === undefined) return null;
+    if (sells === null || sells === undefined) return null;
+
     total += buys + sells;
     contributed = true;
   }
+
   return contributed ? total : null;
 }
 

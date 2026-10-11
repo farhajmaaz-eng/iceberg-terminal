@@ -1,0 +1,35 @@
+/*
+ * Security headers for static hosts that support a `_headers` file
+ * (Netlify, Cloudflare Pages, and most static hosts built on them).
+ *
+ * GitHub Pages ignores this file entirely — that host reads headers from a
+ * `.nojekyll`-adjacent Jekyll config only and offers no header control. On
+ * GitHub Pages the protections that CAN be expressed in HTML (CSP, Permissions
+ * -Policy, referrer policy) still apply from index.html.
+ *
+ * This file exists because two important directives are header-only and are
+ * silently ignored when delivered in a <meta> tag:
+ *
+ *   frame-ancestors 'none'   clickjacking protection
+ *   X-Frame-Options: DENY    the legacy equivalent
+ *
+ * Operators deploying their own build should review connect-src before going
+ * live: the shipped default permits any HTTPS origin so that BYOK custom RPC
+ * endpoints keep working. Narrow it to the providers you intend to allow.
+ */
+
+/*
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https: data: blob:; font-src 'self' data:; connect-src 'self' https: wss:; object-src 'none'; frame-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; manifest-src 'self'; worker-src 'self' blob:
+  X-Frame-Options: DENY
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: no-referrer
+  Cross-Origin-Opener-Policy: same-origin
+  Cross-Origin-Resource-Policy: same-origin
+  Permissions-Policy: accelerometer=(), autoplay=(), camera=(), display-capture=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), midi=(), payment=(), usb=(), xr-spatial-tracking=()
+  Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
+
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
+
+/index.html
+  Cache-Control: no-cache

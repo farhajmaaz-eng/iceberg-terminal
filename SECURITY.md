@@ -137,7 +137,57 @@ These are enforced in code and covered by tests, not aspirations:
 | Locking cannot be bypassed | Locked vault blocks reads, blocks writes, and cannot be downgraded |
 | Storage failure ≠ empty data | Reads throw `StorageError`; the app surfaces a banner instead of showing an empty list |
 | Import is atomic | All records written in one transaction; failure rolls everything back and is reported |
+| Import is validated per store | Records must match their store's real key and persisted-state shape, or they are rejected unread |
+| One passphrase per vault | Adding a credential cannot seal it with a passphrase that differs from the existing vault |
 | No telemetry | Iceberg Terminal ships none and sends nothing to any first-party endpoint |
+
+---
+
+## Deployment security headers
+
+Browser-only apps are often served with no header control at all, so protections
+are provided in two places. Both ship in the repo.
+
+### 1. `index.html` — works on any static host
+
+A `<meta http-equiv="Content-Security-Policy">` and a `Permissions-Policy` are
+embedded in the document, so they apply even on GitHub Pages, which offers no
+header configuration:
+
+- `script-src 'self'` — no inline script, no `eval`. Injected markup cannot execute.
+- `object-src 'none'`, `frame-src 'none'` — no plugins, no nested browsing contexts.
+- `base-uri 'none'`, `form-action 'none'` — blocks `<base>` hijacking and form exfiltration.
+- `img-src https: data:` — provider logo URLs are attacker-controlled, so only http(s) images load.
+- `connect-src https: wss:` — requests may only leave over TLS.
+- `Permissions-Policy` denies camera, microphone, geolocation, payment, USB and friends; this app needs no device access.
+
+`frame-ancestors` is deliberately **absent** from the meta policy. It is ignored
+when a policy is delivered via `<meta>`, so listing it would advertise
+clickjacking protection that is not actually active.
+
+### 2. `public/_headers` — honoured by Netlify / Cloudflare Pages
+
+Carries the same CSP **plus** the directives that only work as real headers:
+
+- `frame-ancestors 'none'` and `X-Frame-Options: DENY` — genuine clickjacking protection.
+- `X-Content-Type-Options: nosniff`, `Strict-Transport-Security`, `Referrer-Policy: no-referrer`.
+
+GitHub Pages ignores this file. Operators deploying elsewhere should mirror these
+headers in whatever their host provides.
+
+### Tightening `connect-src`
+
+The shipped `connect-src` permits any HTTPS origin because Iceberg is BYOK: a
+user may configure an arbitrary Solana RPC endpoint, and a narrower default would
+break that. An operator who only wants the built-in providers should replace it
+with an explicit host list, e.g.:
+
+```
+connect-src 'self' https://api.dexscreener.com https://api.geckoterminal.com https://api.coingecko.com https://solana-rpc.publicnode.com;
+```
+
+Note that narrowing `connect-src` does not stop a script that is already running;
+its value is defence-in-depth alongside `script-src 'self'`.
 
 ---
 

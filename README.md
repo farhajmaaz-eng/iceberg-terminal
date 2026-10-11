@@ -349,7 +349,7 @@ Design rationale is in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 ## Testing
 
 ```bash
-npm test          # 220 unit + component tests
+npm test          # 264 unit + component tests
 npm run test:e2e  # 26 end-to-end tests against the production build
 ```
 

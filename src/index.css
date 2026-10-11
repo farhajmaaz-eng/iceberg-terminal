@@ -21,10 +21,20 @@
 
   body {
     @apply bg-surface-0 text-slate-200 font-sans antialiased;
-    font-feature-settings: 'tnum' 1, 'cv05' 1;
+    /* Tabular figures everywhere: a column of prices that shifts width as
+       digits change is unreadable at a glance, which defeats the point of a
+       terminal. `cv05` gives a true zero, so 0 and O never confuse. */
+    font-feature-settings: 'tnum' 1, 'cv05' 1, 'ss01' 1;
+    font-variant-numeric: tabular-nums;
     overscroll-behavior-y: none;
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
+  }
+
+  /* Selection is nearly invisible on this palette by default, which makes
+     copy-pasting an address feel broken. */
+  ::selection {
+    @apply bg-cyan/25 text-white;
   }
 
   /* Dense terminal scrollbars */
@@ -65,15 +75,28 @@
 
 @layer components {
   .panel {
+    /* Panels are separated by a hairline AND a one-step surface change. The
+       hairline alone disappears on a near-black field; the surface step is
+       what actually makes the layout legible. */
     @apply border border-edge bg-surface-1;
   }
 
   .panel-header {
-    @apply flex h-8 shrink-0 items-center justify-between gap-2 border-b border-edge bg-surface-2/60 px-2.5;
+    @apply flex h-8 shrink-0 items-center justify-between gap-2 border-b border-edge bg-surface-2 px-2.5;
   }
 
   .panel-title {
-    @apply flex items-center gap-1.5 text-2xs font-semibold uppercase tracking-[0.14em] text-slate-400;
+    @apply flex items-center gap-1.5 text-2xs font-semibold uppercase tracking-panel text-slate-400;
+  }
+
+  /* A 1px accent rail used to mark the active section. Replaces the
+     full-row tint, which flattened every row into the same grey. */
+  .nav-active {
+    @apply relative bg-surface-3 text-cyan;
+  }
+  .nav-active::before {
+    content: '';
+    @apply absolute inset-y-0 left-0 w-[2px] bg-cyan;
   }
 
   .data-table {
@@ -81,23 +104,30 @@
   }
 
   .data-table thead th {
-    @apply sticky top-0 z-10 whitespace-nowrap border-b border-edge bg-surface-2 px-2 py-1.5 text-left text-2xs font-semibold uppercase tracking-wider text-slate-500;
+    @apply sticky top-0 z-10 whitespace-nowrap border-b border-edge bg-surface-2 px-2 py-1.5 text-left text-2xs font-semibold uppercase tracking-label text-slate-500;
+  }
+
+  /* Column headers sit directly on the panel surface with no row shading, so
+     the header band reads as a label, not as data. */
+  .data-table thead tr th + th,
+  .data-table thead th:has(+ th) {
+    @apply border-l border-transparent;
   }
 
   .data-table tbody td {
-    @apply whitespace-nowrap border-b border-edge/60 px-2 py-1.5 align-middle;
+    @apply whitespace-nowrap border-b border-edge-soft px-2 py-1.5 align-middle;
   }
 
   .data-table tbody tr {
-    @apply transition-colors;
+    @apply transition-colors duration-75;
   }
 
   .data-table tbody tr:hover {
-    @apply bg-surface-3/70;
+    @apply bg-surface-2;
   }
 
   .data-table tbody tr[data-selected='true'] {
-    @apply bg-cyan/10;
+    @apply bg-cyan/[0.07];
   }
 
   .link {
@@ -105,12 +135,23 @@
   }
 
   .kbd {
-    @apply inline-flex h-4 min-w-[1rem] items-center justify-center rounded border border-edge-strong bg-surface-3 px-1 font-mono text-[10px] font-medium text-slate-400;
+    @apply inline-flex h-4 min-w-[1rem] items-center justify-center rounded-sm border border-edge-strong bg-surface-3 px-1 font-mono text-[10px] font-medium text-slate-400;
   }
 
   .scroll-thin {
     scrollbar-width: thin;
     scrollbar-color: theme('colors.edge.strong') transparent;
+  }
+
+  /* Numeric cells share a baseline grid so digits line up down a column
+     regardless of the surrounding label. */
+  .num {
+    @apply tnum text-right;
+  }
+
+  /* Section eyebrow used above groups of stats. */
+  .eyebrow {
+    @apply text-2xs font-semibold uppercase tracking-panel text-dim;
   }
 }
 

@@ -20,7 +20,21 @@ async function shot(name, route, opts = {}) {
   const { width = 1600, height = 1000, wait = 20000, action } = opts;
   const page = await browser.newPage({ viewport: { width, height } });
   await page.goto(`${base}/${route}`, { waitUntil: 'domcontentloaded', timeout: 60_000 });
-  await page.waitForTimeout(wait);
+
+  // Poll until the panels stop reporting in-flight work rather than sleeping a
+  // fixed amount. A fixed sleep produced screenshots of half-loaded pages
+  // whenever the providers were slow, which is how the old docs ended up
+  // showing an empty Markets view.
+  const deadline = Date.now() + Math.max(wait, 30_000);
+  while (Date.now() < deadline) {
+    const busy = await page
+      .evaluate(() => document.body.innerText.match(/Loading|Computing|Fetching/g)?.length ?? 0)
+      .catch(() => 1);
+    if (busy === 0) break;
+    await page.waitForTimeout(500);
+  }
+  await page.waitForTimeout(1_500);
+
   if (action) await action(page);
   await page.screenshot({ path: `${outDir}/${name}.png` });
   await page.close();

@@ -5,25 +5,30 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Terminal surfaces: near-black -> charcoal
+        // Terminal surfaces: near-black -> charcoal.
+        // Each step is a real, perceptible step. Flat panels on identical
+        // values read as an unfinished mock; these are tuned so a panel, a
+        // header and a hover row are visibly distinct surfaces.
         surface: {
-          0: '#050607',
-          1: '#0a0c0f',
-          2: '#101317',
-          3: '#161a20',
-          4: '#1e242c',
+          0: '#05070a', // app backdrop
+          1: '#0a0d12', // panel body
+          2: '#10141b', // panel header / inset
+          3: '#171c25', // raised: inputs, hover rows
+          4: '#212836', // raised further: active, selected
         },
         edge: {
-          DEFAULT: '#232a33',
-          strong: '#2f3945',
-          soft: '#1a1f26',
+          DEFAULT: '#1e242e', // hairline separators
+          strong: '#2b3441', // emphasised borders
+          soft: '#151a22', // near-invisible dividers
         },
-        // Restrained market accents
-        bull: '#22c55e',
-        bear: '#ef4444',
-        amber: '#f59e0b',
-        cyan: '#22d3ee',
-        dim: '#6b7684',
+        // Restrained market accents. Cyan is reserved for *interactive and
+        // active* state only — never decoration — so that a cyan pixel always
+        // means "you can act here" or "you are here".
+        bull: '#26c281',
+        bear: '#f2555a',
+        amber: '#e0a33e',
+        cyan: '#31c9e8',
+        dim: '#6a7686',
       },
       fontFamily: {
         sans: [
@@ -48,10 +53,30 @@ export default {
         ],
       },
       fontSize: {
+        // A deliberately tight scale. Terminals live or die on density, but
+        // density without a scale is just small text everywhere.
         '2xs': ['0.6875rem', { lineHeight: '1rem' }],
       },
       spacing: {
         panel: '2.25rem',
+        // 4px base rhythm for the dense chrome.
+        rail: '0.5rem',
+      },
+      letterSpacing: {
+        // Panel eyebrows. Wide tracking on 10px caps is what makes a label
+        // read as instrumentation rather than as a heading.
+        panel: '0.16em',
+        label: '0.08em',
+      },
+      boxShadow: {
+        // One shadow, used only for genuine overlays (palette, dialogs).
+        // Cards never get shadows — depth comes from surface value instead.
+        overlay: '0 16px 48px -12px rgba(0,0,0,0.8)',
+      },
+      transitionTimingFunction: {
+        // Slightly quicker than default so the UI feels like an instrument
+        // responding, not a document animating.
+        snap: 'cubic-bezier(0.2, 0, 0, 1)',
       },
       keyframes: {
         'flash-up': {

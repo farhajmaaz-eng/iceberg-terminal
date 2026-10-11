@@ -250,15 +250,21 @@ function PoolTable({ markets, mint }: { markets: Market[]; mint: string }) {
                 <tr key={m.id}>
                   <td className="text-slate-300">{m.dex ?? NA}</td>
                   <td>
-                    <span className="font-mono text-[10px] text-slate-400">
-                      {m.base.symbol ?? '—'}/{m.quote.symbol ?? '—'}
-                      {m.base.address === mint ? (
-                        <Badge tone="info" className="ml-1.5">
-                          BASE
-                        </Badge>
-                      ) : (
-                        <Badge className="ml-1.5">QUOTE</Badge>
-                      )}
+                    <span className="flex items-center gap-1.5">
+                      <span className="tnum text-[10px] text-slate-400">
+                        {m.base.symbol ?? '—'}/{m.quote.symbol ?? '—'}
+                      </span>
+                      {/* Orientation is reference detail, repeated once per
+                          row. A boxed chip per row out-shouted the price
+                          column, so it is a weightless suffix instead. */}
+                      <span
+                        className={cn(
+                          'font-mono text-[9px] uppercase tracking-label',
+                          m.base.address === mint ? 'text-cyan/70' : 'text-dim/60',
+                        )}
+                      >
+                        {m.base.address === mint ? 'base' : 'quote'}
+                      </span>
                     </span>
                   </td>
                   <td className="text-right">

@@ -14,7 +14,14 @@ export function LoadingState({ label = 'Loading', className }: { label?: string;
   );
 }
 
-/** Empty state with an explicit, honest explanation. */
+/**
+ * Empty state with an explicit, honest explanation.
+ *
+ * Anchored toward the top of the panel rather than centred in it. A vertical
+ * centre in a tall, otherwise-empty panel leaves a message floating in a void
+ * with hundreds of pixels of nothing above and below, which reads as a
+ * half-loaded page instead of a deliberate "there is nothing here".
+ */
 export function EmptyState({
   title,
   description,
@@ -29,8 +36,16 @@ export function EmptyState({
   className?: string;
 }) {
   return (
-    <div className={cn('flex h-full flex-col items-center justify-center gap-2 p-6 text-center', className)}>
-      <div className="text-dim">{icon ?? <Inbox size={18} />}</div>
+    <div
+      className={cn(
+        'flex h-full flex-col items-center justify-center gap-2 px-6 py-10 text-center',
+        '[&>*:first-child]:mt-0',
+        className,
+      )}
+    >
+      <div className="flex h-8 w-8 items-center justify-center rounded-sm border border-edge bg-surface-2 text-dim">
+        {icon ?? <Inbox size={15} />}
+      </div>
       <div className="text-xs font-medium text-slate-300">{title}</div>
       {description ? <div className="max-w-md text-2xs leading-relaxed text-dim">{description}</div> : null}
       {action ? <div className="mt-1">{action}</div> : null}
@@ -109,17 +124,28 @@ export function DemoBanner({ reason, className }: { reason?: string | null; clas
   );
 }
 
-/** Inline "last updated / stale" indicator used on every data panel. */
+/**
+ * Inline "last updated / stale" indicator used on data panels.
+ *
+ * This is deliberately quiet. A panel header carrying an identical
+ * "updated 4s ago" next to four identical stat tiles reads as machine chatter
+ * and drowns the numbers. Freshness matters when data is *stale* — so the
+ * indicator is near-invisible when current and only asserts itself when the
+ * operator should be suspicious.
+ */
 export function UpdatedAt({
   timestamp,
   isFetching,
   isStale,
   className,
+  compact,
 }: {
   timestamp?: number | null;
   isFetching?: boolean;
   isStale?: boolean;
   className?: string;
+  /** Icon+time only, no "updated"/"ago" prose. */
+  compact?: boolean;
 }) {
   const [, forceTick] = React.useReducer((x: number) => x + 1, 0);
   React.useEffect(() => {
@@ -129,19 +155,21 @@ export function UpdatedAt({
 
   if (!timestamp) return null;
   const ageSec = Math.max(0, Math.floor((Date.now() - timestamp) / 1000));
+  const stale = Boolean(isStale) || ageSec > 120;
   const age = ageSec < 60 ? `${ageSec}s` : ageSec < 3600 ? `${Math.floor(ageSec / 60)}m` : `${Math.floor(ageSec / 3600)}h`;
 
   return (
     <span
       className={cn(
-        'inline-flex items-center gap-1 font-mono text-[10px] text-dim',
-        (isStale || ageSec > 120) && 'text-amber',
+        'inline-flex shrink-0 items-center gap-1 font-mono text-[10px] tabular-nums transition-colors',
+        // Quiet while fresh, assertive only when the data has actually aged.
+        stale ? 'text-amber' : 'text-dim/60 hover:text-dim',
         className,
       )}
       title={`Last updated ${new Date(timestamp).toLocaleString()}`}
     >
-      {isFetching ? <Loader2 size={9} className="animate-spin" /> : null}
-      {isFetching ? 'syncing' : `updated ${age} ago`}
+      {isFetching ? <Loader2 size={9} className="animate-spin text-cyan" /> : null}
+      {isFetching ? 'syncing' : compact ? age : stale ? `stale · ${age}` : `updated ${age} ago`}
     </span>
   );
 }

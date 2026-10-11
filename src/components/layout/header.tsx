@@ -46,7 +46,7 @@ export function Header({ onToggleSidebar, sidebarCollapsed }: { onToggleSidebar:
       </div>
 
       <form
-        className="relative min-w-0 flex-1 max-w-md"
+        className="relative min-w-0 max-w-md flex-1"
         onSubmit={(e) => {
           e.preventDefault();
           openPalette('search', term);
@@ -58,9 +58,9 @@ export function Header({ onToggleSidebar, sidebarCollapsed }: { onToggleSidebar:
           value={term}
           onChange={(e) => setTerm(e.target.value)}
           onFocus={() => openPalette('search', term)}
-          placeholder="Search tokens, wallets, signatures — or press ⌘K for commands"
+          placeholder="Search tokens, wallets, signatures"
           aria-label="Global search"
-          className="h-6 w-full rounded-sm border border-edge bg-surface-0 pl-6 pr-10 font-mono text-xs text-slate-100 placeholder:text-dim focus:border-cyan/50 focus:outline-none"
+          className="h-6 w-full rounded-sm border border-edge bg-surface-0 pl-6 pr-12 font-mono text-xs text-slate-100 transition-colors placeholder:text-dim focus:border-cyan/50 focus:outline-none"
           spellCheck={false}
         />
         <kbd className="kbd pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2">⌘K</kbd>
@@ -73,6 +73,28 @@ export function Header({ onToggleSidebar, sidebarCollapsed }: { onToggleSidebar:
           </Badge>
         ) : null}
 
+        {/* Reference quote: the one always-worth-knowing number, so it earns a
+            fixed slot at the right of the header. The mint prefix beside it
+            was redundant with the SOL/USDC pair label and read as noise. */}
+        <button
+          type="button"
+          onClick={() => navigate('/markets/solana')}
+          className="hidden items-center gap-2 rounded-sm border border-edge bg-surface-2 py-1 pl-2 pr-2.5 transition-colors hover:border-edge-strong hover:bg-surface-3 lg:flex"
+          aria-label="Solana market overview"
+          title={`SOL quoted against USDC · ${USDC_MINT}`}
+        >
+          <span className="font-mono text-[10px] tracking-label text-dim">SOL/USDC</span>
+          <span className="tnum text-xs font-medium text-slate-100">{formatPrice(price)}</span>
+          <span
+            className={cn(
+              'tnum w-14 border-l border-edge pl-2 text-right text-[10px]',
+              changeToneClass(change),
+            )}
+          >
+            {formatPct(change)}
+          </span>
+        </button>
+
         <button
           type="button"
           onClick={() => openPalette('command')}
@@ -82,23 +104,8 @@ export function Header({ onToggleSidebar, sidebarCollapsed }: { onToggleSidebar:
           <Zap size={12} className="text-cyan" />
           {/* The HELP hint is redundant on touch devices where the label would
               crowd the header; the icon remains the control. */}
-          <span className="hidden font-mono text-[11px] sm:inline">HELP</span>
+          <span className="hidden font-mono text-[11px] tracking-label sm:inline">HELP</span>
         </button>
-
-        <button
-          type="button"
-          onClick={() => navigate('/markets/solana')}
-          className="hidden items-center gap-2 rounded-sm border border-edge bg-surface-2 px-2 py-1 transition-colors hover:bg-surface-3 lg:flex"
-          aria-label="Solana market overview"
-        >
-          <span className="font-mono text-[10px] text-dim">SOL/USDC</span>
-          <span className={cn('tnum text-xs font-medium text-slate-100')}>{formatPrice(price)}</span>
-          <span className={cn('tnum text-[10px]', changeToneClass(change))}>{formatPct(change)}</span>
-        </button>
-
-        <span className="hidden font-mono text-[10px] text-dim lg:inline" title="Reference stablecoin for USD quoting">
-          {USDC_MINT.slice(0, 4)}…
-        </span>
       </div>
     </header>
   );

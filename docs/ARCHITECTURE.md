@@ -312,14 +312,55 @@ and unknown stores are named, so a partial restore is always explained.
 
 ## 9. Rendering and responsive design
 
-- **Desktop (≥1280px)** — multi-panel workstation: chart + trending table + stat
-  rail, with the watchlist on the right.
-- **Tablet/mobile** — single column with a dedicated bottom nav, horizontally
-  scrollable tables, fixed-height charts that fill their panel via
+- **Desktop (≥1280px)** — two-column workstation: chart + overview + trending
+  table on the left, watchlist and liquidity rail on the right. Each column
+  fills the viewport height and its panels scroll independently.
+- **Tablet/mobile** — a single scrolling column, with a bottom nav, horizontally
+  scrollable tables, and fixed-height charts that fill their panel via
   `ResizeObserver`.
 
 Charts measure their container instead of hard-coding pixel heights, so the same
 component is correct at any breakpoint.
+
+### 9.1 Grid rows must be content-sized below `xl`
+
+The desktop/mobile layouts share one grid and differ only by `align-content`.
+On desktop rows must `stretch` so each column fills the viewport; on mobile they
+must `start` so each row is exactly as tall as its content.
+
+This is not cosmetic. With a definite height and the default `align-content:
+stretch`, the browser distributes free space evenly between rows. A column
+containing a chart, a stat strip and a table is far taller than half the
+viewport, so it overflows its row and the panels visually overlap the column
+below. The fix is `[align-content:start]` below `xl` and
+`xl:[align-content:stretch]`, plus `shrink-0` on the column wrappers so they
+cannot be compressed below their content.
+
+Tailwind 3 has no `content-start`/`content-stretch` utilities, hence the
+arbitrary-value syntax.
+
+### 9.2 Visual system
+
+Constraints that keep the interface reading as an instrument rather than a
+dashboard:
+
+- **Cyan is reserved** for interactive and active state — focus rings, active
+  nav, links, sortable columns. It is never decoration, so a cyan pixel always
+  means "you can act here" or "you are here".
+- **Provenance is asymmetric.** Synthetic data is loud (banner + badge): it is a
+  safety claim and must be unmissable. A live provider's name is quiet
+  (`tone="source"`): it is metadata, repeated across a view, and would otherwise
+  out-shout the values it describes.
+- **Depth comes from surface value, not shadow.** `surface-0…4` are tuned so a
+  panel, its header and a hovered row are visibly different. The single
+  `shadow-overlay` is reserved for genuine overlays.
+- **Freshness is quiet until it matters.** `UpdatedAt` is near-invisible while
+  data is current and switches to amber only when stale, so a strip of four
+  tiles does not print "updated 4s ago" four times.
+- **Numbers are tabular everywhere**, with a true zero (`cv05`), because a price
+  column that shifts width as digits change is unreadable.
+- **Missing values recede.** A `—` change is rendered dimmed and unbolded so it
+  cannot be misread as "flat".
 
 ---
 

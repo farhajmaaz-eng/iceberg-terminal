@@ -33,16 +33,20 @@ export function TokenCell({
       <div className="min-w-0">
         <Link
           to={`/token/${mint}`}
-          className="block truncate font-medium text-slate-100 hover:text-cyan"
+          className="block truncate font-medium text-slate-100 transition-colors hover:text-cyan"
           title={mint}
         >
           {label}
         </Link>
-        {size === 'md' && name ? (
-          <div className="flex items-center gap-1.5">
-            <span className="truncate font-mono text-[10px] text-dim" title={name}>
-              {name}
-            </span>
+        {size === 'md' ? (
+          // Identity metadata (name, chain, dex) is reference detail: it sits
+          // below the symbol without competing with it.
+          <div className="flex min-w-0 items-center gap-1">
+            {name ? (
+              <span className="truncate text-[10px] text-dim" title={name}>
+                {name}
+              </span>
+            ) : null}
           </div>
         ) : null}
       </div>
@@ -100,9 +104,15 @@ export function TokenAvatar({
   );
 }
 
+/**
+ * Price.
+ *
+ * The one number a trader scans a row for, so it gets the most weight in the
+ * row and full opacity. Everything else is context and recedes.
+ */
 export function PriceCell({ value, className }: { value: number | null; className?: string }) {
   return (
-    <span className={cn('tnum block text-right', className)}>
+    <span className={cn('tnum block text-right font-medium text-slate-100', className)}>
       {formatPrice(value)}
     </span>
   );
@@ -111,7 +121,16 @@ export function PriceCell({ value, className }: { value: number | null; classNam
 export function ChangeCell({ value, className }: { value: number | null; className?: string }) {
   const tone = changeToneClass(value);
   return (
-    <span className={cn('tnum block text-right font-medium', tone, value === null && 'font-normal', className)}>
+    <span
+      className={cn(
+        'tnum block text-right font-medium',
+        tone,
+        // An absent change is an absence, not a neutral datum: drop the weight
+        // so it cannot be misread as "flat".
+        value === null && 'font-normal text-dim',
+        className,
+      )}
+    >
       {formatPct(value)}
     </span>
   );

@@ -23,7 +23,7 @@ import { ALL_PROVIDERS } from '@/providers';
 import { type RpcFlavour } from '@/providers/chain/solanaRpc';
 import type { ConnectionTestResult, ProviderCategory } from '@/types/models';
 import { useProviderStore } from '@/store/providers';
-import { useVaultStore } from '@/store/vault';
+import { useVaultStore, vaultIsLocked } from '@/store/vault';
 import { useToast } from '@/features/command/toast';
 import { buildRpcContext } from '@/data/context';
 import type { RequestContext } from '@/providers/types';
@@ -108,7 +108,7 @@ function ProviderCard({ providerId }: { providerId: string }) {
   const [error, setError] = React.useState<string | null>(null);
 
   const config = configs[provider.id] ?? { enabled: true, options: {} };
-  const vaultLocked = vault.encrypted && !vault.unlocked;
+  const vaultLocked = vaultIsLocked(vault) || (vault.encrypted && !vault.unlocked);
   const selected =
     provider.category === 'market'
       ? selectedMarket === provider.id
@@ -520,14 +520,17 @@ function DataSection() {
       const report = await applyBundle(bundle);
       const parts = [`Imported ${report.total} record(s) across ${Object.keys(report.written).length} store(s).`];
       if (report.skipped > 0) {
-        parts.push(`${report.skipped} unusable entr${report.skipped === 1 ? 'y was' : 'ies were'} skipped.`);
+        parts.push(
+          `${report.skipped} record(s) were rejected as malformed and NOT written — ` +
+            `your existing data is untouched by them.`,
+        );
       }
       if (report.unknownStores.length > 0) {
         parts.push(`Ignored unknown store(s): ${report.unknownStores.join(', ')}.`);
       }
       parts.push('Reloading…');
       toast.push({ message: parts.join(' '), tone: report.skipped > 0 ? 'warn' : 'success' });
-      setTimeout(() => window.location.reload(), 900);
+      setTimeout(() => window.location.reload(), 1100);
     } catch (e) {
       // Import is atomic: a failure here means NOTHING was written.
       toast.push({
@@ -643,10 +646,12 @@ function SecuritySection() {
   const [unlockError, setUnlockError] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState(false);
 
-  const unlock = async () => {
+  const unlock = async (passphrase?: string) => {
     setBusy(true);
     setUnlockError(null);
-    const ok = await vault.unlock(unlockPass);
+    // An omitted passphrase means the encrypted path; an explicit empty string
+    // means "reopen an obfuscation-only vault", which has no passphrase.
+    const ok = await vault.unlock(passphrase ?? unlockPass);
     setBusy(false);
     if (!ok) setUnlockError(vault.error ?? 'Incorrect passphrase.');
     else setUnlockPass('');
@@ -676,7 +681,7 @@ function SecuritySection() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          {vault.encrypted ? (
+          {vault.encrypted || (vault.lockedByUser && vault.stored.length > 0) ? (
             <>
               <Badge tone={vault.unlocked ? 'bull' : 'warn'}>
                 {vault.unlocked ? 'vault unlocked' : 'vault locked'}
@@ -685,7 +690,7 @@ function SecuritySection() {
                 <Button size="sm" variant="outline" onClick={vault.lock}>
                   <Lock size={11} /> Lock vault
                 </Button>
-              ) : (
+              ) : vault.encrypted ? (
                 <>
                   <Input
                     type="password"
@@ -699,8 +704,18 @@ function SecuritySection() {
                     Unlock
                   </Button>
                 </>
+              ) : (
+                // Obfuscation-only vault: no passphrase exists, so unlocking is
+                // simply re-reading the stored records.
+                <Button size="sm" variant="primary" onClick={() => void unlock('')} disabled={busy}>
+                  Unlock vault
+                </Button>
               )}
-              <Badge tone="bull">{vault.stored.length} encrypted credential(s)</Badge>
+              {vault.encrypted ? (
+                <Badge tone="bull">{vault.stored.length} encrypted credential(s)</Badge>
+              ) : (
+                <Badge tone="warn">{vault.stored.length} obfuscated credential(s)</Badge>
+              )}
             </>
           ) : vault.stored.length > 0 ? (
             <>

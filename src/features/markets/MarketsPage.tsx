@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowUpRight, Flame, Info, Plus, Star } from 'lucide-react';
+import { Activity, ArrowUpRight, Flame, Info, Plus, Star } from 'lucide-react';
 import { Badge, ProvenanceBadge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Panel, PanelBody, PanelHeader } from '@/components/ui/panel';
@@ -91,9 +91,20 @@ export function MarketsPage() {
     <div className="flex min-h-0 flex-1 flex-col">
       {anyDemo ? <DemoBanner reason={describeFallback(overview.data?.fallback ?? candles.data?.fallback)} /> : null}
 
-      <div className="grid min-h-0 flex-1 grid-cols-1 gap-px overflow-auto bg-edge xl:grid-cols-[minmax(0,1fr)_minmax(0,420px)] xl:overflow-hidden">
+      {/*
+          Desktop: two fixed columns, each filling the height, panels scrolling
+          independently (xl:content-stretch + xl:overflow-hidden).
+
+          Below xl this is a SINGLE scrolling column. It must size its rows to
+          their content (content-start) rather than stretching them to fill the
+          container: with a definite height and default `align-content: stretch`,
+          the browser divides the free space evenly between the rows, so a
+          column whose content is taller than its share spills over the next
+          row and the panels visually overlap.
+        */}
+      <div className="grid min-h-0 flex-1 grid-cols-1 gap-px overflow-y-auto overflow-x-hidden bg-edge [align-content:start] xl:grid-cols-[minmax(0,1fr)_minmax(0,420px)] xl:[align-content:stretch] xl:overflow-hidden">
         {/* ── Left: SOL overview + chart ─────────────────────────────── */}
-        <div className="flex min-h-0 flex-col gap-px bg-edge">
+        <div className="flex shrink-0 flex-col gap-px bg-edge xl:min-h-0 xl:shrink">
           <Panel className="h-[24rem] shrink-0 xl:h-auto xl:min-h-0 xl:flex-1">
             <PanelHeader
               title="SOL / USDC"
@@ -148,60 +159,72 @@ export function MarketsPage() {
             </PanelBody>
           </Panel>
 
-          <div className="grid grid-cols-1 gap-px bg-edge sm:grid-cols-2 lg:grid-cols-4">
-            <StatTile
-              label="SOL price"
-              value={overview.isLoading ? '…' : formatPrice(o?.priceUsd ?? null)}
-              sub={
-                overview.isError ? (
-                  <span className="text-bear">unavailable — {overview.error.message}</span>
-                ) : o?.change24h != null ? (
-                  <span className={changeToneClass(o.change24h)}>{formatPct(o.change24h)} 24h</span>
-                ) : (
-                  '24h change not reported'
-                )
-              }
-              updated={overview.dataUpdatedAt}
-              fetching={overview.isFetching}
+          {/* One header for the whole strip: a single freshness readout beats
+              four copies of the same "updated Ns ago". */}
+          <Panel className="shrink-0">
+            <PanelHeader
+              title="SOL overview"
+              icon={<Activity size={12} />}
+              subtitle="· aggregates"
+              actions={<UpdatedAt timestamp={overview.dataUpdatedAt} isFetching={overview.isFetching} />}
             />
-            <StatTile
-              label="24h volume"
-              value={formatUsdCompact(o?.volume24h ?? null)}
-              sub={overview.isError ? <span className="text-bear">unavailable</span> : 'CoinGecko aggregate across venues'}
-              updated={overview.dataUpdatedAt}
-              fetching={overview.isFetching}
-            />
-            <StatTile
-              label="Market cap"
-              value={formatUsdCompact(o?.marketCap ?? null)}
-              sub={
-                overview.isError ? (
-                  <span className="text-bear">unavailable</span>
-                ) : o?.circulatingSupply != null ? (
-                  `${compact(o.circulatingSupply)} SOL circulating`
-                ) : (
-                  'supply not reported'
-                )
-              }
-              updated={overview.dataUpdatedAt}
-              fetching={overview.isFetching}
-            />
-            <StatTile
-              label="ATH / rank"
-              value={o?.ath != null ? `${formatPrice(o.ath)}` : '—'}
-              sub={
-                overview.isError ? (
-                  <span className="text-bear">unavailable</span>
-                ) : o?.athChangePercent != null ? (
-                  `${formatPct(o.athChangePercent)} from ATH · rank #${o.rank ?? '—'}`
-                ) : (
-                  'ATH not reported'
-                )
-              }
-              updated={overview.dataUpdatedAt}
-              fetching={overview.isFetching}
-            />
-          </div>
+            <PanelBody className="overflow-visible">
+              <div className="grid grid-cols-1 gap-px bg-edge sm:grid-cols-2 lg:grid-cols-4">
+                <StatTile
+                  label="Price"
+                  value={overview.isLoading ? '…' : formatPrice(o?.priceUsd ?? null)}
+                  sub={
+                    overview.isError ? (
+                      <span className="text-bear">unavailable — {overview.error.message}</span>
+                    ) : o?.change24h != null ? (
+                      <span className={changeToneClass(o.change24h)}>{formatPct(o.change24h)} 24h</span>
+                    ) : (
+                      '24h change not reported'
+                    )
+                  }
+                  updated={overview.dataUpdatedAt}
+                  fetching={overview.isFetching}
+                />
+                <StatTile
+                  label="24h volume"
+                  value={formatUsdCompact(o?.volume24h ?? null)}
+                  sub={overview.isError ? <span className="text-bear">unavailable</span> : 'CoinGecko aggregate'}
+                  updated={overview.dataUpdatedAt}
+                  fetching={overview.isFetching}
+                />
+                <StatTile
+                  label="Market cap"
+                  value={formatUsdCompact(o?.marketCap ?? null)}
+                  sub={
+                    overview.isError ? (
+                      <span className="text-bear">unavailable</span>
+                    ) : o?.circulatingSupply != null ? (
+                      `${compact(o.circulatingSupply)} SOL circulating`
+                    ) : (
+                      'supply not reported'
+                    )
+                  }
+                  updated={overview.dataUpdatedAt}
+                  fetching={overview.isFetching}
+                />
+                <StatTile
+                  label="ATH / rank"
+                  value={o?.ath != null ? `${formatPrice(o.ath)}` : '—'}
+                  sub={
+                    overview.isError ? (
+                      <span className="text-bear">unavailable</span>
+                    ) : o?.athChangePercent != null ? (
+                      `${formatPct(o.athChangePercent)} from ATH · #${o.rank ?? '—'}`
+                    ) : (
+                      'ATH not reported'
+                    )
+                  }
+                  updated={overview.dataUpdatedAt}
+                  fetching={overview.isFetching}
+                />
+              </div>
+            </PanelBody>
+          </Panel>
 
           <Panel className="min-h-[16rem] shrink-0 xl:flex-1">
             <PanelHeader
@@ -223,7 +246,7 @@ export function MarketsPage() {
         </div>
 
         {/* ── Right: watchlist rail ──────────────────────────────────── */}
-        <div className="flex min-h-0 flex-col gap-px bg-edge">
+        <div className="flex shrink-0 flex-col gap-px bg-edge xl:min-h-0 xl:shrink">
           <Panel className="min-h-[12rem] shrink-0 xl:min-h-0 xl:flex-1">
             <PanelHeader
               title={`Watchlist · ${activeList?.name ?? '—'}`}
@@ -295,26 +318,44 @@ function SparklineIcon() {
   return <Info size={12} />;
 }
 
+/**
+ * A single figure in the overview strip.
+ *
+ * `updated` is accepted but rendered only while the value is stale or being
+ * refetched. Four tiles sharing one query all reported the identical
+ * "updated 4s ago", which is four times the same fact and reads as noise; the
+ * strip carries one timestamp in its header instead.
+ */
 function StatTile({
   label,
   value,
   sub,
   updated,
   fetching,
+  tone,
 }: {
   label: string;
   value: string;
   sub: React.ReactNode;
   updated?: number;
   fetching?: boolean;
+  tone?: 'bull' | 'bear';
 }) {
+  const stale = updated != null && Date.now() - updated > 120_000;
   return (
-    <div className="bg-surface-1 px-3 py-2">
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-2xs font-semibold uppercase tracking-wider text-dim">{label}</span>
-        <UpdatedAt timestamp={updated} isFetching={fetching} />
+    <div className="min-w-0 bg-surface-1 px-3 py-2">
+      <div className="flex items-center gap-1.5">
+        <span className="truncate text-2xs font-semibold uppercase tracking-label text-dim">{label}</span>
+        {fetching || stale ? <UpdatedAt timestamp={updated} isFetching={fetching} compact /> : null}
       </div>
-      <div className="tnum mt-0.5 truncate text-lg leading-tight text-slate-100">{value}</div>
+      <div
+        className={cn(
+          'tnum mt-1 truncate text-[15px] font-medium leading-tight',
+          tone === 'bull' ? 'text-bull' : tone === 'bear' ? 'text-bear' : 'text-slate-50',
+        )}
+      >
+        {value}
+      </div>
       <div className="mt-0.5 truncate font-mono text-[10px] text-dim">{sub}</div>
     </div>
   );

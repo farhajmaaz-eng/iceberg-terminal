@@ -5,6 +5,51 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+
+- **DexScreener logos.** `info.imageUrl` is returned as a plain string, but it
+  was read with an array helper, so every token logo resolved to `null` and only
+  generated identicons ever rendered. Image fields are now normalized across
+  string/array shapes, fall back to `header`/`openGraph`, and are restricted to
+  `http(s)` before reaching an `<img src>` (token metadata is
+  attacker-controlled).
+- **Transaction totals with an unknown component.** `txns24h` computed
+  `(buys ?? 0) + (sells ?? 0)`, substituting zero for a missing side and
+  under-reporting the total. A total is now reported only when every component
+  of every contributing pool is known; otherwise it is `—`. Partial aggregates
+  (liquidity, volume) keep their sum-of-reported-pools behaviour and are
+  labelled as such.
+- **PBKDF2 iteration counts are validated before decryption.** A stored
+  envelope's `iterations` value flowed straight into `deriveKey`, so a tampered
+  local record could hang the main thread (2³¹−1) or produce an opaque WebCrypto
+  failure (`0`/`NaN`). Envelopes are now validated on read and before any key
+  derivation: bounded iteration count, algorithm/KDF/version checks, and length
+  checks on salt, IV and ciphertext before decoding.
+- **Vault lock state.** Locking could be bypassed or undone: `setKey` silently
+  set `unlocked: true`, so saving a credential reopened a locked vault;
+  re-saving without a passphrase silently downgraded an encrypted record to
+  weak obfuscation; `lock()` was a no-op for an obfuscation-only vault; and a
+  storage read failure reported the vault as open. Locked vaults now block reads
+  *and* writes, cannot be downgraded, always report locked, and fail closed on
+  storage errors.
+- **"Clear vault" left keys on disk.** It removed only the legacy blob, not the
+  per-provider `secret:<id>` records, so it appeared to succeed while encrypted
+  credentials remained and the vault came back locked.
+- **Storage failures looked like empty data.** IndexedDB helpers swallowed
+  errors and returned `undefined`/`[]`, making a blocked or quota-exceeded
+  database indistinguishable from an empty watchlist — and letting an export
+  quietly produce an empty file. Reads now throw `StorageError`; best-effort
+  paths opt in explicitly; and a persistent banner reports the failure.
+- **Workspace import was not atomic and did not round-trip.** Records were
+  written one at a time (a mid-way failure left partial state) and the export
+  format dropped IndexedDB keys, so an import restored nothing while reporting
+  success. Import now writes every record in a single transaction, exports
+  explicit `{ key, value }` pairs (still accepting the previous shape), and
+  returns a report of what was written, skipped or ignored. Reset likewise
+  reports exactly which stores were cleared.
+
 ## [0.1.0] — 2026-10-10
 
 Initial public release.

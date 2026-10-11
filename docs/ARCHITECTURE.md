@@ -84,6 +84,21 @@ through `src/lib/validate.ts`:
 A malformed field therefore becomes `null` — "not reported" — rather than `0`
 ("measured as zero") or an exception.
 
+Two field-shape rules learned the hard way:
+
+- **Don't assume a container type.** DexScreener returns `info.imageUrl` as a
+  plain string; reading it with `asArray()` (which returns `[]` for a string)
+  silently made every logo `null`, so only generated identicons ever rendered.
+  Image fields are now normalized across string/array shapes and restricted to
+  `http(s)` before reaching an `<img src>`, since token metadata is
+  attacker-controlled.
+- **A total is only a total when every component is known.** Transaction counts
+  combine *buys* and *sells*, so `(buys ?? 0) + (sells ?? 0)` would report a
+  confident number from a half-reported pool. `totalTxns()` returns `null`
+  instead. By contrast, `sumReported()` (liquidity, volume) deliberately sums
+  whatever pools reported — that is a *partial aggregate*, and the UI labels
+  those columns as provider-reported aggregates rather than complete totals.
+
 ### 3.4 Capability routing
 
 Capabilities are not evenly distributed. DexScreener has the best pool coverage
@@ -186,6 +201,39 @@ re-encrypting (and therefore re-prompting for the passphrase on) the others.
 - No passphrase → single-byte-XOR obfuscation, and the UI labels it
   *"obfuscated"*, not *"encrypted"*
 
+Envelopes are **validated on read and before any key derivation**
+(`validateEnvelope`). The record lives in IndexedDB, which any script in the
+origin can rewrite, and `iterations` used to flow straight into `deriveKey`:
+
+- an absurd count (2³¹−1) hangs the main thread — a denial-of-service primitive
+- `0`/`NaN`/negative makes WebCrypto fail with an opaque error
+- malformed or oversized base64 allocates before it can be rejected
+
+Validation bounds the iteration count, checks the algorithm/KDF/version tags,
+and length-checks salt, IV and ciphertext *before* decoding. Obfuscation records
+must declare `kdf: "NONE"` and `iterations: 0`, so a corrupt record cannot route
+a "decrypt" through an unbounded derivation.
+
+#### Lock-state invariants
+
+`unlocked` is a property of the **vault**, not of any single credential, and
+that distinction is where the bugs lived:
+
+1. `setKey` must not flip `unlocked` to `true` as a side effect of storing a key
+   — otherwise saving a credential quietly reopens a vault the user locked.
+2. While locked, `getKey`/`hasKey` return nothing **and** `setKey` refuses, so
+   "lock" is never cosmetic.
+3. Storing a key for a provider that already has a passphrase-encrypted record
+   must not silently downgrade it to weak obfuscation; the passphrase is
+   required instead.
+4. Any storage failure is **fail-closed**: if the vault cannot be read we cannot
+   know what is in it, so it is reported as locked rather than open.
+5. `lock()` always locks, including for an obfuscation-only vault (there is no
+   passphrase to re-open with, but the state must not claim to be open).
+6. `clearVault()` removes the `secret:<id>` records too, not just the legacy
+   blob — otherwise "Clear vault" appeared to succeed while the encrypted keys
+   remained on disk.
+
 ---
 
 ## 7. Classification policy (on-chain)
@@ -221,6 +269,45 @@ and the UI shows *"Token accounts unavailable"* instead of *"0 balances"*.
 The same principle applies to every panel: a failed sub-request degrades that
 panel and says so, rather than silently blanking a metric.
 
+### 8.1 Storage failure is not empty data
+
+A browser can refuse IndexedDB outright (private mode, blocked storage,
+partitioning). The read/write helpers therefore **throw** a `StorageError`
+rather than returning `undefined`/`[]`, because a swallowed failure is
+indistinguishable from "you have no watchlist" — the user would think their data
+was deleted, and an export would quietly produce an empty file.
+
+Two kinds of unavailability remain, and the difference matters:
+
+- A **corrupt record** genuinely has no value → `null` is correct.
+- A **storage failure** means the question could not be asked → it is recorded in
+  `storage-health` and rendered as a persistent banner. The zustand adapter
+  still degrades (so the app boots) but records the failure, and save failures
+  re-throw so they are never reported as saved.
+
+Only paths that genuinely want best-effort behaviour use the explicit
+`bestEffortIdb*` helpers.
+
+### 8.2 Workspace import is atomic
+
+Import collects every record first, then writes them all inside a **single
+IndexedDB transaction** (`idbWriteAtomic`). IndexedDB transactions are atomic,
+so a failure part-way through rolls everything back: there is no
+half-restored watchlist paired with a full wallet.
+
+The export format stores explicit `{ key, value }` pairs. `getAll()` returns
+values only and discards keys, which made an export impossible to import — a
+"successful" export that restored nothing. `applyBundle` accepts both the
+current shape and the earlier `{ state: { name, value } }` shape, and reports
+exactly what landed:
+
+```ts
+{ written: { watchlists: 12, wallets: 3 }, total: 15, skipped: 0, unknownStores: [] }
+```
+
+Entries that cannot yield a key are counted as `skipped` rather than dropped,
+and unknown stores are named, so a partial restore is always explained.
+
 ---
 
 ## 9. Rendering and responsive design
@@ -242,7 +329,8 @@ component is correct at any breakpoint.
 | --- | --- | --- |
 | Unit | Vitest | Normalization, missing data, error taxonomy, redaction, crypto, persistence, command parsing, filters |
 | Component | Vitest + RTL | Provenance badges, demo banner, error states, sparkline fallbacks |
-| End-to-end | Playwright | Shell render, navigation, palette → command execution, watchlist mutation, demo-mode labelling |
+| Regression | Vitest | Image-field shape, transaction totals, envelope validation, vault lock transitions, storage failures, import atomicity |
+| End-to-end | Playwright | Shell render, navigation, palette → command execution, watchlist mutation, demo-mode labelling, logo loading, vault lock enforcement |
 
 The unit suite asserts the *negative* cases aggressively — that a missing value
 stays `null`, that demo data is labelled, that a provider error surfaces rather

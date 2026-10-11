@@ -167,4 +167,57 @@ test.describe('Iceberg Terminal', () => {
     await expect(anyText(page, /No news provider configured/i)).toBeVisible({ timeout: 15_000 });
     await expect(anyText(page, /never invent them/i)).toBeVisible();
   });
+
+  test('token logos load from the provider instead of falling back to identicons', async ({ page }) => {
+    await goto(page, `#/token/${MINT}`);
+    await expect(anyText(page, /Token metadata/)).toBeVisible({ timeout: 25_000 });
+
+    // Regression: info.imageUrl is a plain string; reading it as an array made
+    // every logo null, so only the generated identicon ever rendered.
+    const img = page.locator('img').first();
+    await expect(img).toBeVisible({ timeout: 25_000 });
+    const src = await img.getAttribute('src');
+    expect(src).toMatch(/^https:\/\//);
+    expect(src).toContain('dexscreener.com');
+
+    const loaded = await img.evaluate((el) => el.complete && el.naturalWidth > 0);
+    expect(loaded).toBe(true);
+  });
+
+  test('no storage warning appears in a healthy browser', async ({ page }) => {
+    await goto(page, '#/');
+    await waitForShell(page);
+    await page.waitForTimeout(3000);
+    // A blocked or full database raises this banner; a healthy one must not.
+    await expect(page.getByText(/Local storage .*(unavailable|full)/i)).toHaveCount(0);
+  });
+
+  test('a locked credential vault blocks key entry', async ({ page, browserName }) => {
+    test.skip(browserName !== 'chromium', 'Vault state is shared storage; desktop-only to keep the run isolated.');
+    await goto(page, '#/settings');
+    await expect(anyText(page, /^Birdeye$/)).toBeVisible({ timeout: 20_000 });
+
+    const card = page.locator('div.border', { hasText: 'Birdeye' }).last();
+    await card.scrollIntoViewIfNeeded();
+
+    const keyInput = card.locator('input[type=password]').first();
+    await keyInput.fill('e2e-test-key');
+    await card.getByLabel(/passphrase/i).fill('e2e-passphrase');
+    await card.getByRole('button', { name: /save key/i }).click();
+    await expect(anyText(page, /vault unlocked/i)).toBeVisible({ timeout: 15_000 });
+
+    await page.getByRole('button', { name: /lock vault/i }).click();
+    await expect(anyText(page, /vault locked/i)).toBeVisible({ timeout: 10_000 });
+
+    // Regression: storing a key used to silently reopen a locked vault, so the
+    // field must now be disabled and the reason shown.
+    await card.scrollIntoViewIfNeeded();
+    await expect(keyInput).toBeDisabled();
+    await expect(card.getByText(/vault is locked/i)).toBeVisible();
+    await expect(card.getByRole('button', { name: /save key/i })).toBeDisabled();
+
+    // Clean up the credential this test created.
+    await page.getByRole('button', { name: /clear vault/i }).click();
+    await page.waitForTimeout(600);
+  });
 });

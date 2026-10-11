@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { TooltipProvider } from '@/components/ui/primitives';
 import { Header, ErrorBoundary } from '@/components/layout/header';
 import { MobileNav, SideNav } from '@/components/layout/nav';
+import { StorageWarning } from '@/components/layout/storage-warning';
 import { CommandPalette, openPalette } from '@/features/command/command-palette';
 import { ToastProvider } from './features/command/toast';
 import { AlertBell, useAlertEngine } from '@/features/watchlist/AlertDialogEngine';
@@ -93,6 +94,7 @@ function Shell() {
         sidebarCollapsed={collapsed}
         onToggleSidebar={() => updatePrefs({ sidebarCollapsed: !collapsed })}
       />
+      <StorageWarning />
       <div className="flex min-h-0 flex-1">
         <SideNav collapsed={collapsed} />
         <main className="flex min-h-0 flex-1 flex-col pb-14 md:pb-0" data-scroll-root>

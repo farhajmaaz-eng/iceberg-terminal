@@ -93,6 +93,44 @@ function mapToken(v: unknown, chain: ChainId): TokenRef {
   };
 }
 
+/**
+ * Resolve a token logo URL from the provider's `info` block.
+ *
+ * DexScreener returns `info.imageUrl` as a **plain string**, but the field has
+ * historically also been an array, and third-party DEX metadata can carry
+ * anything at all. Treating it as an array unconditionally silently produced
+ * `null` for every token, so the UI fell back to generated identicons and no
+ * real logos ever rendered.
+ *
+ * These URLs are attacker-controlled (anyone can create a token), so the value
+ * is restricted to http(s) before it is ever handed to an <img src>.
+ */
+function pickImageUrl(info: Record<string, unknown> | null): string | null {
+  if (!info) return null;
+  const candidates: unknown[] = [];
+
+  for (const field of ['imageUrl', 'header', 'openGraph'] as const) {
+    const raw = info[field];
+    if (typeof raw === 'string') candidates.push(raw);
+    else if (Array.isArray(raw)) candidates.push(...raw);
+  }
+
+  for (const candidate of candidates) {
+    if (typeof candidate !== 'string') continue;
+    const value = candidate.trim();
+    if (!value) continue;
+    try {
+      const url = new URL(value, 'https://dexscreener.com');
+      // Only absolute http(s) URLs; blocks javascript:, data:, blob:, etc.
+      if (url.protocol !== 'https:' && url.protocol !== 'http:') continue;
+      return url.toString();
+    } catch {
+      continue;
+    }
+  }
+  return null;
+}
+
 function mapMarket(raw: unknown): Market | null {
   const rec = asRecord(raw);
   if (!rec) return null;
@@ -104,7 +142,7 @@ function mapMarket(raw: unknown): Market | null {
 
   const liquidity = asRecord(rec.liquidity);
   const info = asRecord(rec.info);
-  const images = asArray(info?.imageUrl);
+  const imageUrl = pickImageUrl(info);
 
   const txns = asRecord(rec.txns);
   const txnsSummary = txns
@@ -140,7 +178,7 @@ function mapMarket(raw: unknown): Market | null {
     txns: txnsSummary,
     pairCreatedAt: toEpochMs(rec.pairCreatedAt),
     labels: asArray(rec.labels).filter((x): x is string => typeof x === 'string'),
-    imageUrl: typeof images[0] === 'string' ? (images[0] as string) : null,
+    imageUrl,
     provenance: prov('dexscreener.pairs'),
   };
 }
@@ -158,16 +196,59 @@ function sumLiquidity(markets: Market[]): number | null {
   return seen ? total : null;
 }
 
-function sumNonNull(values: (number | null)[]): number | null {
+/**
+ * Sum values that at least one pool reported.
+ *
+ * This is a **partial** aggregate: if some pools omit the field the result
+ * covers only the pools that reported it. That is correct for "aggregate
+ * liquidity/volume across the pools this provider returned", and the UI labels
+ * these columns as provider-reported aggregates. It must NOT be used for a
+ * quantity where "part of it is known" reads as "the whole is known" — see
+ * {@link totalTxns}.
+ */
+function sumReported(values: (number | null)[]): number | null {
   let total = 0;
   let seen = false;
   for (const v of values) {
-    if (v !== null) {
+    if (v !== null && v !== undefined && Number.isFinite(v)) {
       total += v;
       seen = true;
     }
   }
   return seen ? total : null;
+}
+
+/**
+ * Total 24h transaction count for a token.
+ *
+ * Buys and sells are two components of ONE total, so the total is only
+ * trustworthy when both are known — for every pool that contributed.
+ *
+ * The previous `(buys ?? 0) + (sells ?? 0)` silently substituted zero for a
+ * missing component and under-reported the total, which is exactly the
+ * "missing value rendered as 0" failure this project exists to avoid. A pool
+ * that reports buys but not sells contributes nothing to the total rather than
+ * a partial number that looks complete.
+ */
+function totalTxns(markets: Market[]): number | null {
+  let total = 0;
+  let contributed = false;
+  for (const m of markets) {
+    const t = m.txns?.h24;
+    if (!t) continue;
+    const buys = t.buys;
+    const sells = t.sells;
+    if (buys === null || buys === undefined || sells === null || sells === undefined) {
+      // Incomplete component: we cannot state this pool's total.
+      if (buys !== null && buys !== undefined) {
+        return null;
+      }
+      continue;
+    }
+    total += buys + sells;
+    contributed = true;
+  }
+  return contributed ? total : null;
 }
 
 function mapSummary(raw: unknown, socialsFrom?: unknown, descriptionFrom?: string | null): TokenMarketSummary | null {
@@ -210,22 +291,16 @@ function mapSummary(raw: unknown, socialsFrom?: unknown, descriptionFrom?: strin
     marketCap: best((m) => m.marketCap) ?? best((m) => m.fdv),
     fdv: best((m) => m.fdv),
     liquidityUsd: sumLiquidity(sorted),
-    volume24h: sumNonNull(sorted.map((m) => m.volume?.h24 ?? null)),
-    volume6h: sumNonNull(sorted.map((m) => m.volume?.h6 ?? null)),
-    volume1h: sumNonNull(sorted.map((m) => m.volume?.h1 ?? null)),
+    volume24h: sumReported(sorted.map((m) => m.volume?.h24 ?? null)),
+    volume6h: sumReported(sorted.map((m) => m.volume?.h6 ?? null)),
+    volume1h: sumReported(sorted.map((m) => m.volume?.h1 ?? null)),
     change5m: best((m) => m.priceChange?.m5 ?? null),
     change1h: best((m) => m.priceChange?.h1 ?? null),
     change6h: best((m) => m.priceChange?.h6 ?? null),
     change24h: best((m) => m.priceChange?.h24 ?? null),
-    buys24h: sumNonNull(sorted.map((m) => m.txns?.h24?.buys ?? null)),
-    sells24h: sumNonNull(sorted.map((m) => m.txns?.h24?.sells ?? null)),
-    txns24h: sumNonNull(
-      sorted.map((m) => {
-        const t = m.txns?.h24;
-        if (!t || (t.buys === null && t.sells === null)) return null;
-        return (t.buys ?? 0) + (t.sells ?? 0);
-      }),
-    ),
+    buys24h: sumReported(sorted.map((m) => m.txns?.h24?.buys ?? null)),
+    sells24h: sumReported(sorted.map((m) => m.txns?.h24?.sells ?? null)),
+    txns24h: totalTxns(sorted),
     createdAt: sorted.reduce<number | null>((acc, m) => {
       if (m.pairCreatedAt === null) return acc;
       if (acc === null) return m.pairCreatedAt;
@@ -443,4 +518,4 @@ export const dexscreenerProvider: MarketDataProvider = {
   },
 };
 
-export const _internals = { mapMarket, mapSummary, sumNonNull };
+export const _internals = { mapMarket, mapSummary, sumReported, totalTxns, pickImageUrl };

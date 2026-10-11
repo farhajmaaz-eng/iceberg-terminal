@@ -76,6 +76,39 @@ Read this part carefully — these are properties of the platform, not bugs:
 - **A passphrase cannot be recovered.** There is no reset. Losing it means
   removing and re-entering the key.
 
+### Tampered local records
+
+The vault lives in IndexedDB, which any script in the origin (or an
+already-compromised machine) can rewrite. Envelopes are therefore validated
+**before** any key derivation runs:
+
+- `iterations` must be an integer within a bounded range. Left unchecked, a
+  hostile value of 2³¹−1 hangs the main thread — a denial-of-service primitive —
+  and `0`/`NaN` makes WebCrypto fail opaquely.
+- Version, algorithm and KDF tags must match, and an obfuscation record must
+  declare `kdf: "NONE"` with `iterations: 0` so it cannot be routed through an
+  unbounded derivation.
+- `salt`, `iv` and `cipherText` are length-checked before decoding, so a
+  malformed record is rejected instead of allocating on the way to failing.
+- A wrong passphrase and a tampered record both surface as a clear message
+  rather than an opaque crypto error.
+
+### Locking the vault
+
+`unlocked` describes the **vault**, not any individual credential. Locking drops
+all key material from memory and:
+
+- blocks reads (`getKey`/`hasKey` return nothing)
+- blocks writes (storing a key while locked is refused)
+- cannot be bypassed by saving another credential
+- cannot be silently undone by re-saving a key without a passphrase, which
+  would otherwise downgrade an encrypted record to weak obfuscation
+- fails **closed**: if the vault cannot be read, it is reported as locked
+  rather than open
+
+"Clear vault" removes the per-provider `secret:<id>` records as well as the
+legacy blob, so it cannot appear to succeed while keys remain on disk.
+
 ### Practical guidance
 
 - Use **provider-scoped keys** with spending limits where the provider offers
@@ -97,9 +130,13 @@ These are enforced in code and covered by tests, not aspirations:
 | Read-only | No wallet connection, signing, swap or transaction submission |
 | No fabricated data | Missing values are `null` → `—`, never `0`; no synthetic headlines; no invented holder counts |
 | Demo data is labelled | `Provenance.origin === 'demo'` renders an unmissable banner and badge |
-| Untrusted metadata is never executable | Token names and news are rendered as React text, never `dangerouslySetInnerHTML` |
+| Untrusted metadata is never executable | Token names and news are rendered as React text; remote image URLs are restricted to http(s) |
 | Provider payloads are validated | `src/lib/validate.ts` rejects junk into `null` rather than passing it through |
 | Secrets excluded from exports | Exporter skips the secrets store; importer rejects bundles containing it |
+| Local records are validated | Vault envelopes are bounds-checked before any key derivation |
+| Locking cannot be bypassed | Locked vault blocks reads, blocks writes, and cannot be downgraded |
+| Storage failure ≠ empty data | Reads throw `StorageError`; the app surfaces a banner instead of showing an empty list |
+| Import is atomic | All records written in one transaction; failure rolls everything back and is reported |
 | No telemetry | Iceberg Terminal ships none and sends nothing to any first-party endpoint |
 
 ---

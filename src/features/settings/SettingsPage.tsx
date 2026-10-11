@@ -29,6 +29,7 @@ import { buildRpcContext } from '@/data/context';
 import type { RequestContext } from '@/providers/types';
 import { applyBundle, buildExport, downloadBundle, ImportError, parseBundle } from '@/lib/workspace';
 import { resetLocalData } from '@/lib/workspace';
+import { StorageError } from '@/lib/idb';
 
 /**
  * Settings — providers, BYOK credentials, preferences and local data.
@@ -107,6 +108,7 @@ function ProviderCard({ providerId }: { providerId: string }) {
   const [error, setError] = React.useState<string | null>(null);
 
   const config = configs[provider.id] ?? { enabled: true, options: {} };
+  const vaultLocked = vault.encrypted && !vault.unlocked;
   const selected =
     provider.category === 'market'
       ? selectedMarket === provider.id
@@ -259,11 +261,18 @@ function ProviderCard({ providerId }: { providerId: string }) {
                 type="password"
                 value={draftKey}
                 onChange={(e) => setDraftKey(e.target.value)}
-                placeholder={hasStoredKey ? '••••••••  (enter a new key to replace)' : 'paste your API key'}
+                placeholder={vaultLocked ? 'Unlock the vault to enter a key' : hasStoredKey ? '••••••••  (enter a new key to replace)' : 'paste your API key'}
                 autoComplete="off"
+                disabled={vaultLocked}
               />
             </Label>
-            {vault.webCryptoAvailable ? (
+            {vaultLocked ? (
+              <p className="flex items-start gap-1.5 text-[10px] leading-relaxed text-amber">
+                <Lock size={11} className="mt-px shrink-0" />
+                The credential vault is locked. Unlock it in <strong>Security notes</strong> below before adding or
+                changing keys — storing one while locked would leave the vault open behind your back.
+              </p>
+            ) : vault.webCryptoAvailable ? (
               <Label hint="Optional. Without one, the key is obfuscated but not encrypted.">
                 Vault passphrase
                 <Input
@@ -281,7 +290,12 @@ function ProviderCard({ providerId }: { providerId: string }) {
               </p>
             )}
             <div className="flex flex-wrap items-center gap-1.5">
-              <Button size="sm" variant="primary" onClick={() => void saveKey()} disabled={draftKey.trim() === ''}>
+              <Button
+                size="sm"
+                variant="primary"
+                onClick={() => void saveKey()}
+                disabled={draftKey.trim() === '' || vaultLocked}
+              >
                 <Key size={11} /> Save key
               </Button>
               {hasStoredKey ? (
@@ -477,10 +491,25 @@ function DataSection() {
   const doExport = async () => {
     try {
       const bundle = await buildExport();
+      const total = Object.values(bundle.stores).reduce((acc, entries) => acc + entries.length, 0);
       downloadBundle(bundle);
-      toast.push({ message: 'Workspace exported. API keys are never included.', tone: 'success' });
-    } catch {
-      toast.push({ message: 'Export failed.', tone: 'error' });
+      toast.push({
+        message:
+          total === 0
+            ? 'Exported an empty workspace — there is no local data to save yet.'
+            : `Workspace exported (${total} records). API keys are never included.`,
+        tone: total === 0 ? 'warn' : 'success',
+      });
+    } catch (e) {
+      // A storage failure must not be reported as a successful export: an
+      // empty file that "worked" would destroy the user's backup silently.
+      toast.push({
+        message:
+          e instanceof StorageError
+            ? `Export failed — ${e.message} Nothing was saved.`
+            : 'Export failed. Nothing was saved.',
+        tone: 'error',
+      });
     }
   };
 
@@ -488,15 +517,26 @@ function DataSection() {
     try {
       const text = await file.text();
       const bundle = parseBundle(text);
-      const counts = await applyBundle(bundle);
-      toast.push({
-        message: `Imported ${Object.values(counts).reduce((a, b) => a + b, 0)} stores. Reloading…`,
-        tone: 'success',
-      });
-      setTimeout(() => window.location.reload(), 700);
+      const report = await applyBundle(bundle);
+      const parts = [`Imported ${report.total} record(s) across ${Object.keys(report.written).length} store(s).`];
+      if (report.skipped > 0) {
+        parts.push(`${report.skipped} unusable entr${report.skipped === 1 ? 'y was' : 'ies were'} skipped.`);
+      }
+      if (report.unknownStores.length > 0) {
+        parts.push(`Ignored unknown store(s): ${report.unknownStores.join(', ')}.`);
+      }
+      parts.push('Reloading…');
+      toast.push({ message: parts.join(' '), tone: report.skipped > 0 ? 'warn' : 'success' });
+      setTimeout(() => window.location.reload(), 900);
     } catch (e) {
+      // Import is atomic: a failure here means NOTHING was written.
       toast.push({
-        message: e instanceof ImportError ? e.message : 'Import failed: file is not a valid workspace bundle.',
+        message:
+          e instanceof ImportError
+            ? `${e.message} Nothing was changed.`
+            : e instanceof StorageError
+              ? `Import failed — ${e.message} Nothing was written.`
+              : 'Import failed: file is not a valid workspace bundle. Nothing was changed.',
         tone: 'error',
       });
     }
@@ -532,7 +572,9 @@ function DataSection() {
         <p className="text-[10px] leading-relaxed text-dim">
           Exports use a versioned JSON format (<span className="font-mono text-slate-400">iceberg-terminal.workspace</span>{' '}
           v1). API keys are excluded by construction — the exporter skips the secrets store entirely, and the importer
-          rejects any bundle containing one.
+          rejects any bundle containing one. Imports are <strong className="text-slate-400">atomic</strong>: every record
+          is written in a single IndexedDB transaction, so a failure part-way through leaves your existing data completely
+          untouched rather than half-restored.
         </p>
       </PanelBody>
 
@@ -557,10 +599,33 @@ function DataSection() {
               variant="danger"
               disabled={confirmText.trim().toUpperCase() !== 'RESET'}
               onClick={() => {
-                void resetLocalData().then(() => {
-                  toast.push({ message: 'Local data cleared. Reloading…', tone: 'info' });
-                  setTimeout(() => window.location.reload(), 500);
-                });
+                void resetLocalData()
+                  .then((report) => {
+                    // Report exactly what happened — a reset that only cleared
+                    // some stores must not claim success.
+                    if (report.failed.length > 0) {
+                      toast.push({
+                        message: `Reset incomplete. Could not clear: ${report.failed
+                          .map((f) => f.store)
+                          .join(', ')}.`,
+                        tone: 'error',
+                      });
+                      return;
+                    }
+                    toast.push({
+                      message: report.localStorageCleared
+                        ? `Local data cleared (${report.cleared.length} stores). Reloading…`
+                        : `Local database cleared, but browser storage could not be reset. Reloading…`,
+                      tone: report.localStorageCleared ? 'info' : 'warn',
+                    });
+                    setTimeout(() => window.location.reload(), 600);
+                  })
+                  .catch((e: unknown) => {
+                    toast.push({
+                      message: `Reset failed — ${e instanceof Error ? e.message : 'storage error'}. Nothing was changed.`,
+                      tone: 'error',
+                    });
+                  });
               }}
             >
               Delete everything
@@ -583,7 +648,7 @@ function SecuritySection() {
     setUnlockError(null);
     const ok = await vault.unlock(unlockPass);
     setBusy(false);
-    if (!ok) setUnlockError('Incorrect passphrase.');
+    if (!ok) setUnlockError(vault.error ?? 'Incorrect passphrase.');
     else setUnlockPass('');
   };
 
@@ -613,6 +678,9 @@ function SecuritySection() {
         <div className="flex flex-wrap items-center gap-2">
           {vault.encrypted ? (
             <>
+              <Badge tone={vault.unlocked ? 'bull' : 'warn'}>
+                {vault.unlocked ? 'vault unlocked' : 'vault locked'}
+              </Badge>
               {vault.unlocked ? (
                 <Button size="sm" variant="outline" onClick={vault.lock}>
                   <Lock size={11} /> Lock vault
@@ -647,6 +715,14 @@ function SecuritySection() {
             />
           )}
           {unlockError ? <span className="text-[10px] text-bear">{unlockError}</span> : null}
+          {vault.error ? <span className="text-[10px] text-bear">{vault.error}</span> : null}
+          {vault.warnings.length > 0 ? (
+            <ul className="w-full list-disc space-y-0.5 pl-4 text-[10px] text-amber/90">
+              {vault.warnings.map((w) => (
+                <li key={w}>{w}</li>
+              ))}
+            </ul>
+          ) : null}
           {vault.stored.length > 0 ? (
             <Button size="sm" variant="danger" onClick={() => void vault.clearAll()}>
               <Trash2 size={11} /> Clear vault

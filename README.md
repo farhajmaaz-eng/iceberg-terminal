@@ -290,7 +290,12 @@ Read [`SECURITY.md`](SECURITY.md) in full. The short version:
   transaction submission.
 - **It never asks for a seed phrase or private key.** There is no input for one
   anywhere in the codebase.
-- Credentials are **excluded from workspace exports** by construction.
+- Credentials are **excluded from workspace exports** by construction, and
+  imports are **atomic** — every record lands in a single transaction, so a
+  failure rolls back completely rather than leaving a half-restored workspace.
+- A locked credential vault blocks **reads and writes**, cannot be silently
+  reopened by saving another key, and cannot be downgraded to unencrypted
+  storage. Local vault records are bounds-checked before any key derivation.
 
 ---
 
@@ -298,9 +303,13 @@ Read [`SECURITY.md`](SECURITY.md) in full. The short version:
 
 This is the project's defining constraint.
 
-- Every displayed metric comes from a real provider, a transparent calculation
+- **Every displayed metric** comes from a real provider, a transparent calculation
   whose arithmetic is shown, or clearly labelled demo data.
-- **A missing value is never shown as `0`.** Unknown renders as `—`.
+- **A missing value is never shown as `0`.** Unknown renders as `—`. This holds
+  for *totals* too: a transaction count is reported only when both the buy and
+  sell components are known.
+- **Storage failure is never shown as empty data.** If IndexedDB is blocked or
+  full, a banner says so rather than presenting an empty watchlist.
 - **Demo data is never presented as live.** It always carries a banner and a
   badge, and it is only produced when demo mode is on or a provider genuinely
   cannot serve the data. A provider failure with demo mode off shows a real
@@ -340,8 +349,8 @@ Design rationale is in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 ## Testing
 
 ```bash
-npm test          # 169 unit + component tests
-npm run test:e2e  # 10 end-to-end tests against the production build
+npm test          # 220 unit + component tests
+npm run test:e2e  # 26 end-to-end tests against the production build
 ```
 
 Coverage focuses on the negative cases that keep this project honest:
@@ -350,8 +359,9 @@ Coverage focuses on the negative cases that keep this project honest:
 - Missing data staying `null` rather than becoming `0`
 - Error taxonomy, retry policy, cancellation, deduplication, rate limiting
 - Secret redaction (asserting the secret is absent from output)
-- Vault encryption round-trip and failure on a wrong passphrase
-- Local persistence and hostile-import rejection
+- Vault envelope validation, encryption round-trip, and lock-state transitions
+- Local persistence, storage-failure reporting, and hostile-import rejection
+- Atomic workspace import and lossless export round-trips
 - Command parsing and argument validation
 - Screener filtering and flow-statistic correctness
 
